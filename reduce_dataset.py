@@ -9,7 +9,7 @@ print(f"Original number of rows: {len(df_full)}")
 # frac=0.10 means we randomly keep 10% of the rows.
 # random_state=42 ensures reproducibility (if you run the script again, it will pick the exact same 10%)
 print("Performing 10% random sampling")
-df_sample = df_full.sample(frac=0.10, random_state=42)
+df_sample = df_full.sample(frac=0.25, random_state=42)
 
 # Saving the new, lighter file
 new_filename = "Viajes_Gipuzkoa_10_PERCENT.csv"
