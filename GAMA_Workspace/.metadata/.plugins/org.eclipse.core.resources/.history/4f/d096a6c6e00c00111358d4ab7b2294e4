@@ -1,0 +1,88 @@
+model FluxGipuzkoa
+
+global {
+    // --- 1. CHARGEMENT DES FICHIERS ---
+    // Assurez-vous que les noms correspondent exactement à vos fichiers
+    file shape_file_zones <- file("../includes/gipuzkoa_distritos.shp");
+    file csv_file_data <- csv_file("../includes/flux_gipuzkoa_final.csv", ","); 
+    // Note: Si votre CSV a été nettoyé par Python, le séparateur est souvent une virgule ",". 
+    // Si ça ne marche pas, essayez "|" ou ";"
+
+    // Définition de l'espace de simulation
+    geometry shape <- envelope(shape_file_zones);
+
+    init {
+        // --- 2. CRÉATION DE la CARTE ---
+        create zone from: shape_file_zones with: [id::string(read("ID"))]; 
+        // "ID" est le nom de la colonne dans le Shapefile MITMA. 
+        // Si erreur, essayez "COD_DIST" ou verifiez les attributs.
+
+        // --- 3. INDEXATION (Pour aller vite) ---
+        // On crée un dictionnaire pour trouver un quartier instantanément par son ID
+        map<string, zone> map_zones <- zone as_map (each.id::each);
+
+        // --- 4. CRÉATION DES FLUX (Voyages) ---
+        matrix data <- matrix(csv_file_data);
+        
+        // On parcourt le CSV ligne par ligne
+        loop i from: 0 to: data.rows - 1 {
+            string id_depart <- string(data[i, "origen"]);
+            string id_arrivee <- string(data[i, "destino"]);
+            float nombre_personnes <- float(data[i, "viajes"]); // ou "viajes_km"
+
+            // On vérifie que les zones existent bien sur la carte (pour éviter les bugs)
+            if (id_depart in map_zones.keys and id_arrivee in map_zones.keys) {
+                
+                // On crée l'agent "voyage"
+                create voyage {
+                    depart <- map_zones[id_depart];
+                    arrivee <- map_zones[id_arrivee];
+                    nb_personnes <- nombre_personnes;
+                    
+                    // La forme du voyage est une ligne entre les centres des deux quartiers
+                    shape <- line([depart.location, arrivee.location]);
+                }
+            }
+        }
+        
+        write "Simulation chargée : " + length(voyage) + " connexions créées.";
+    }
+}
+
+// --- LES AGENTS ---
+
+species zone {
+    string id;
+    
+    aspect base {
+        // Dessine le quartier en gris clair avec bordure grise
+        draw shape color: #gainsboro border: #gray;
+    }
+}
+
+species voyage {
+    zone depart;
+    zone arrivee;
+    float nb_personnes;
+
+    aspect flow {
+        // On dessine une ligne. 
+        // L'épaisseur dépend du nombre de personnes (divisé par 50 pour que ce soit lisible)
+        // La couleur est rouge transparent
+        if (nb_personnes > 10) { // On n'affiche pas les tout petits trajets pour y voir clair
+            draw shape width: nb_personnes / 50 color: rgb(255, 0, 0, 100); 
+        }
+    }
+}
+
+// --- L'EXPÉRIENCE ---
+
+experiment Visualisation type: gui {
+    output {
+        display map type: java2D background: #white {
+            species zone aspect: base;
+            species voyage aspect: flow;
+        }
+    }
+}
+

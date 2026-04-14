@@ -1,0 +1,106 @@
+model SimulationGipuzkoaPeakHour
+
+global {
+    // --- 1. DATA SOURCES ---
+    file shape_districts <- file("../includes/gipuzkoa_distritos.shp"); 
+    file shape_roads <- file("../includes/road_gipuzkoa/road_gipuzkoa.shp");
+    file csv_points <- file("../includes/points_region_prets.csv");
+    file csv_flux <- file("../includes/14022025_Viajes_Gipuzkoa.csv");
+    
+    geometry shape <- envelope(shape_districts);
+
+    // --- 2. TEMPORAL CONFIG (8h - 9h) ---
+    date starting_date <- datetime([2025, 2, 14, 8, 0, 0]);
+    float step <- 30 #s; 
+    
+    graph road_network;
+    int target_hour <- 8; 
+
+    init {
+        create region_map from: shape_districts with: [id_zone::string(read("ID"))];
+        create road from: shape_roads;
+        
+        // Alignment logic for inconsistent coordinate systems
+        if (!empty(road)) {
+            geometry road_box <- envelope(road);
+            float off_x <- road_box.location.x - (road_box.width / 2);
+            float off_y <- road_box.location.y + (road_box.height / 2);
+            
+            if (off_x > 1000) {
+                ask road {
+                    location <- {location.x - off_x, off_y - location.y};
+                }
+            }
+        }
+        
+        road_network <- as_edge_graph(road);
+        
+        // POI Generation
+        matrix data_pts <- matrix(csv_points);
+        loop i from: 0 to: data_pts.rows - 1 {
+            create establishment {
+                location <- {float(data_pts[0, i]), float(data_pts[1, i])};
+            }
+        }
+        
+        do initialize_peak_traffic;
+    }
+
+    action initialize_peak_traffic {
+        matrix data_flux <- matrix(csv_flux);
+        loop i from: 0 to: data_flux.rows - 1 {
+            if (int(data_flux[2, i]) = target_hour) {
+                string o_id <- string(data_flux[0, i]);
+                string d_id <- string(data_flux[1, i]);
+                int nb_trips <- int(data_flux[3, i]);
+                
+                region_map origin_zone <- region_map first_with (each.id_zone = o_id);
+                region_map dest_zone <- region_map first_with (each.id_zone = d_id);
+                
+                if (origin_zone != nil and dest_zone != nil) {
+                    create commuter number: max(1, nb_trips / 10) {
+                        location <- any_location_in(origin_zone);
+                        target <- any_location_in(dest_zone);
+                    }
+                }
+            }
+        }
+    }
+
+    reflex stop_at_nine when: current_date.hour >= 9 {
+        do pause;
+    }
+}
+
+species region_map {
+    string id_zone;
+    aspect default { draw shape color: #whitesmoke border: #gray; }
+}
+
+species road {
+    aspect default { draw shape color: #black width: 0.8; }
+}
+
+species establishment {
+    aspect default { draw circle(60) color: rgb(220, 20, 60, 40); }
+}
+
+species commuter skills: [moving] {
+    point target;
+    aspect default { draw triangle(350) color: #dodgerblue rotate: heading + 90; }
+    reflex move {
+        do goto target: target speed: 50 #km/#h on: road_network;
+        if (location distance_to target < 100 #m) { do die; }
+    }
+}
+
+experiment Simulation_Gipuzkoa type: gui {
+    output {
+        display Vue_Principale background: #white {
+            species region_map aspect: default;
+            species road aspect: default;
+            species establishment aspect: default;
+            species commuter aspect: default;
+        }
+    }
+}

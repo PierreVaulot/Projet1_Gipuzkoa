@@ -1,0 +1,27 @@
+model CarteGipuzkoa
+
+global {
+    file shape_file_zones <- file("../includes/gipuzkoa_distritos.shp");
+    geometry shape <- envelope(shape_file_zones);
+
+    init {
+        // 3. Créer les agents "zone" à partir du fichier
+        create zone from: shape_file_zones;
+        
+        write "Carte chargée avec " + length(zone) + " zones/districts.";
+    }
+}
+
+species zone {
+    aspect base {
+        draw shape color: #lightgray border: #black;
+    }
+}
+
+experiment Visualisation type: gui {
+    output {
+        display map type: java2D { 
+            species zone aspect: base;
+        }
+    }
+}

@@ -1,0 +1,34 @@
+model CarteGipuzkoa
+
+global {
+    // 1. Définir le chemin vers votre fichier Shapefile
+    // Le "../" signifie "remonter d'un dossier" pour aller chercher dans includes
+    file shape_file_zones <- file("../includes/gipuzkoa_distritos.shp");
+
+    // 2. Définir la taille du monde (l'environnement) selon la carte
+    geometry shape <- envelope(shape_file_zones);
+
+    init {
+        // 3. Créer les agents "zone" à partir du fichier
+        create zone from: shape_file_zones;
+        
+        write "Carte chargée avec " + length(zone) + " zones/districts.";
+    }
+}
+
+// Définition de l'espèce "zone" (les quartiers)
+species zone {
+    // Aspect visuel simple
+    aspect base {
+        draw shape color: #lightgray border: #black;
+    }
+}
+
+// L'expérience pour lancer la simulation
+experiment Visualisation type: gui {
+    output {
+        display map type: java2D { // type: opengl est plus joli mais parfois plus lourd
+            species zone aspect: base;
+        }
+    }
+}/**

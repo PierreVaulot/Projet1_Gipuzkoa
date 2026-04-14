@@ -1,0 +1,204 @@
+model GipuzkoaScheduledTraffic
+
+global {
+    // --- 1. DATA SOURCES ---
+    file shape_districts <- file("../includes/gipuzkoa_distritos.shp"); 
+    file shape_roads <- file("../includes/road_gipuzkoa/road_gipuzkoa.shp");
+    file csv_points <- csv_file("../includes/points_region_prets.csv", true);
+    
+    // Processed CSV with exact departure times
+    file csv_flows <- csv_file("../includes/14022025_Viajes_Gipuzkoa_GAMA_Ready.csv", true);
+    
+    // Define the simulation bounding box based on the district map
+    geometry shape <- envelope(shape_districts);
+
+    // --- 2. TEMPORAL CONFIGURATION (08:00 - 09:00) ---
+    // Start simulation exactly at 8:00 AM
+    date starting_date <- date([2025, 2, 14, 8, 0, 0]);
+    
+    // 10-second step for smooth, continuous agent movement
+    float step <- 10 #s; 
+    
+    graph road_network;
+    int target_hour <- 8; 
+
+    init {
+        // --- STEP 1: INFRASTRUCTURE (DISTRICTS) ---
+        create district from: shape_districts with: [zone_id::string(read("ID"))];
+        
+        // --- STEP 2: ROAD NETWORK & SPATIAL ALIGNMENT ---
+        create road from: shape_roads;
+        
+        if (!empty(road)) {
+            geometry road_box <- envelope(road);
+            float off_x <- road_box.location.x - (road_box.width / 2);
+            float off_y <- road_box.location.y + (road_box.height / 2);
+            
+            // Manual calibration for coordinate system mismatches
+            if (off_x > 1000) {
+                write "[*] Aligning road network geometry...";
+                ask road {
+                    location <- {location.x - off_x, off_y - location.y};
+                }
+            }
+        }
+        
+        // Compile the topological graph for pathfinding
+        road_network <- as_edge_graph(road);
+        
+        // --- STEP 3: POINTS OF INTEREST (POIs) ---
+        matrix data_pts <- matrix(csv_points);
+        loop i from: 0 to: data_pts.rows - 1 {
+            create establishment {
+                // Column 0: x, Column 1: y
+                location <- {float(data_pts[0, i]), float(data_pts[1, i])};
+            }
+        }
+        
+        // --- STEP 4: SCHEDULED TRAFFIC INITIALIZATION ---
+        write "[*] Loading smooth departure schedules for the 08:00 window...";
+        do initialize_trip_schedulers;
+        
+        write "[+] INITIALIZATION COMPLETE.";
+    }
+
+    action initialize_trip_schedulers {
+        matrix flow_data <- matrix(csv_flows);
+        
+        loop i from: 0 to: flow_data.rows - 1 {
+            // Index 1 corresponds to 'periodo' in the updated CSV
+            if (int(flow_data[1, i]) = target_hour) {
+                
+                string origin_id <- string(flow_data[2, i]);      // Index 2: origen
+                string dest_id <- string(flow_data[3, i]);        // Index 3: destino
+                int trip_count <- int(float(flow_data[4, i]));    // Index 4: viajes
+                string dep_time_str <- string(flow_data[7, i]);   // Index 7: departure_time (HH:MM:SS)
+                
+                // Parse "HH:MM:SS" into a precise GAMA date object
+                list<string> t_parts <- split_with(dep_time_str, ":");
+                date exact_departure <- date([2025, 2, 14, int(t_parts[0]), int(t_parts[1]), int(t_parts[2])]);
+                
+                district origin_zone <- district first_with (each.zone_id = origin_id);
+                district dest_zone <- district first_with (each.zone_id = dest_id);
+                
+                if (origin_zone != nil and dest_zone != nil and trip_count > 0) {
+                    // Create invisible scheduler agents to dispatch vehicles at the exact time
+                    create trip_scheduler {
+                        origin <- origin_zone;
+                        destination <- dest_zone;
+                        trips <- trip_count;
+                        depart_at <- exact_departure;
+                    }
+                }
+            }
+        }
+    }
+
+    // Halt simulation at 9:00 AM
+    reflex stop_at_nine when: current_date.hour >= 9 {
+        write "[+] 08:00 - 09:00 simulation window complete. Pausing execution.";
+        do pause;
+    }
+}
+
+// --- SPECIES DEFINITIONS ---
+
+// 1. INVISIBLE SCHEDULER: Manages exact departure times
+species trip_scheduler {
+    district origin;
+    district destination;
+    int trips;
+    date depart_at;
+
+    // Triggers when the simulation clock reaches the exact departure time
+    reflex dispatch_agents when: current_date >= depart_at {
+        
+        // Spawn the commuter vehicles (Ratio 1 agent : 10 real trips for performance)
+        create commuter number: max(1, trips / 10) {
+            
+            // 1. Generate raw random points inside the origin and destination districts
+            point raw_start <- any_location_in(myself.origin);
+            point raw_end <- any_location_in(myself.destination);
+            
+            // 2. Find the closest road segments to these points
+            road start_road <- road closest_to raw_start;
+            road end_road <- road closest_to raw_end;
+            
+            // 3. SNAP TO ROAD: Place the agent strictly on the closest road network graph
+            location <- any_location_in(start_road);
+            target <- any_location_in(end_road);
+        }
+        
+        // Self-destruct to free up RAM once dispatched
+        do die;
+    }
+}
+
+// 2. STATIC INFRASTRUCTURE
+species district {
+    string zone_id;
+    aspect base {
+        // Slightly darker background to make glowing vehicles pop
+        draw shape color: rgb(230, 230, 230) border: #gray;
+    }
+}
+
+species road {
+    aspect base {
+        draw shape color: #black width: 1.0;
+    }
+}
+
+species establishment {
+    aspect base {
+        draw circle(60) color: rgb(220, 20, 60, 40); 
+    }
+}
+
+// 3. MOBILE AGENTS
+species commuter skills: [moving] {
+    point target;
+
+    reflex move {
+        // Pathfinding routing strictly on the road network
+        do goto target: target speed: 50 #km/#h on: road_network;
+        
+        // Remove agent upon reaching destination (10m tolerance since they are snapped to roads)
+        if (location distance_to target < 10 #m) {
+            do die;
+        }
+    }
+
+    aspect base {
+        // Glow effect (Aura)
+        draw circle(800) color: rgb(0, 255, 255, 60); 
+        
+        // Vehicle Body (Neon Cyan triangle with white border)
+        draw triangle(600) color: #cyan border: #white width: 2 rotate: heading + 90;
+    }
+}
+
+// --- GUI & EXPERIMENT ---
+
+experiment Simulation_Smooth_Flow type: gui {
+    output {
+        display Main_View background: #white {
+            
+            // Layer ordering: Bottom to Top
+            species district aspect: base;
+            species road aspect: base;
+            species establishment aspect: base;
+            species commuter aspect: base;
+            
+            // UI Overlay: Real-time simulation clock
+            graphics "Clock_Overlay" {
+                // Format time cleanly (e.g., "08:15:05")
+                string current_time_str <- string(current_date.hour) + ":" + 
+                                           (current_date.minute < 10 ? "0" : "") + string(current_date.minute) + ":" + 
+                                           (current_date.second < 10 ? "0" : "") + string(current_date.second);
+                                           
+                draw "Time: " + current_time_str at: {100, 100} color: #black font: font("SansSerif", 24, #bold);
+            }
+        }
+    }
+}

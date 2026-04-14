@@ -1,0 +1,104 @@
+model FluxGipuzkoa
+
+global {
+    // --- 1. CHARGEMENT DES FICHIERS ---
+    // On charge la carte (Shapefile)
+    file shape_file_zones <- file("../includes/gipuzkoa_distritos.shp");
+    
+    // On charge les données (CSV) avec le séparateur "," (virgule)
+    file csv_file_data <- csv_file("../includes/flux_gipuzkoa_final.csv", ",");
+
+    // On définit la taille du monde selon la carte
+    geometry shape <- envelope(shape_file_zones);
+
+    init {
+        write "Chargement de la carte...";
+        
+        // --- 2. CRÉATION DES ZONES (Districts) ---
+        // "ID" est le nom standard de la colonne dans le shapefile.
+        // SI ERREUR ICI : Remplacez "ID" par "COD_DIST" ou "CUSEC"
+        create zone from: shape_file_zones with: [id::string(read("ID"))]; 
+
+        // --- 3. Dictionnaire rapide ---
+        // Permet de retrouver une zone instantanément grâce à son ID
+        map<string, zone> map_zones <- zone as_map (each.id::each);
+
+        write "Chargement des flux (patience)...";
+        
+        // --- 4. LECTURE DU CSV ET CRÉATION DES VOYAGES ---
+        matrix data <- matrix(csv_file_data);
+        
+        // On commence la boucle à 1 pour sauter la ligne de titres (fecha, periodo...)
+        loop i from: 1 to: data.rows - 1 {
+            
+            // --- C'EST ICI QUE C'EST CORRIGÉ ---
+            // Colonne 2 = Origine (ex: 20013)
+            string id_depart <- string(data[2, i]); 
+            
+            // Colonne 3 = Destination (ex: 20025)
+            string id_arrivee <- string(data[3, i]);
+            
+            // Colonne 13 = viajes (Nombre de personnes)
+            float nombre_personnes <- float(data[13, i]); 
+
+            // --- CRÉATION DE L'AGENT VOYAGE ---
+            // On vérifie d'abord que les deux quartiers existent bien sur la carte
+            if (id_depart in map_zones.keys and id_arrivee in map_zones.keys) {
+                
+                // On ne dessine que s'il y a plus de 0 personne (pour alléger)
+                if (nombre_personnes > 0) {
+                    create voyage {
+                        depart <- map_zones[id_depart];
+                        arrivee <- map_zones[id_arrivee];
+                        nb_personnes <- nombre_personnes;
+                        
+                        // On trace une ligne droite entre les deux quartiers
+                        shape <- line([depart.location, arrivee.location]);
+                    }
+                }
+            }
+        }
+        
+        write "Terminé ! " + length(voyage) + " liens de mobilité créés.";
+    }
+}
+
+// --- DÉFINITION DES AGENTS ---
+
+species zone {
+    string id;
+    
+    aspect base {
+        // Quartiers en gris clair avec bordure grise
+        draw shape color: #gainsboro border: #gray;
+    }
+}
+
+species voyage {
+    zone depart;
+    zone arrivee;
+    float nb_personnes;
+
+    aspect flow {
+        // L'épaisseur du trait dépend du nombre de personnes
+        // On divise par 100 pour que ce ne soit pas trop gros à l'écran
+        float epaisseur <- nb_personnes / 100;
+        
+        // On s'assure qu'on voit au moins un petit trait fin (minimum 0.1)
+        if (epaisseur < 0.1) { epaisseur <- 0.1; }
+
+        // Dessin : Ligne rouge un peu transparente (0.5)
+        draw shape width: epaisseur color: rgb(255, 0, 0, 100);
+    }
+}
+
+// --- L'EXPÉRIENCE (L'INTERFACE) ---
+
+experiment Visualisation type: gui {
+    output {
+        display map type: java2D background: #white {
+            species zone aspect: base;
+            species voyage aspect: flow;
+        }
+    }
+}
