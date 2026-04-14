@@ -1,11 +1,11 @@
-!SESSION 2026-04-14 09:13:40.777 -----------------------------------------------
+!SESSION 2026-04-14 13:00:34.183 -----------------------------------------------
 eclipse.buildId=${build.id}
 java.version=21.0.7
 java.vendor=Eclipse Adoptium
 BootLoader constants: OS=win32, ARCH=x86_64, WS=win32, NL=fr_FR
 Command-line arguments:  -os win32 -ws win32 -arch x86_64 -data @noDefault
 
-!ENTRY org.eclipse.jface.text 4 0 2026-04-14 09:14:20.797
+!ENTRY org.eclipse.jface.text 4 0 2026-04-14 13:01:51.749
 !MESSAGE java.lang.NullPointerException: Cannot invoke "String.replace(char, char)" because "label" is null
 !STACK 0
 java.util.concurrent.CompletionException: java.lang.NullPointerException: Cannot invoke "String.replace(char, char)" because "label" is null
@@ -41,7 +41,7 @@ Caused by: java.lang.NullPointerException: Cannot invoke "String.replace(char, c
 	at java.base/java.util.concurrent.CompletableFuture$AsyncSupply.run(CompletableFuture.java:1768)
 	... 1 more
 
-!ENTRY org.eclipse.jface.text 4 0 2026-04-14 09:26:42.942
+!ENTRY org.eclipse.jface.text 4 0 2026-04-14 14:00:54.379
 !MESSAGE java.lang.NullPointerException: Cannot invoke "String.replace(char, char)" because "label" is null
 !STACK 0
 java.util.concurrent.CompletionException: java.lang.NullPointerException: Cannot invoke "String.replace(char, char)" because "label" is null
@@ -76,34 +76,3 @@ Caused by: java.lang.NullPointerException: Cannot invoke "String.replace(char, c
 	at org.eclipse.ui.internal.editors.text.codemining.annotation.AnnotationCodeMiningProvider.lambda$0(AnnotationCodeMiningProvider.java:222)
 	at java.base/java.util.concurrent.CompletableFuture$AsyncSupply.run(CompletableFuture.java:1768)
 	... 1 more
-
-!ENTRY org.eclipse.ui.workbench 4 0 2026-04-14 11:00:25.293
-!MESSAGE An internal error has occurred.
-!STACK 0
-java.lang.NullPointerException: Cannot invoke "java.lang.Runnable.run()" because "<parameter1>" is null
-	at gama.ui.experiment.views.displays.DisplaySurfaceMenu.lambda$1(DisplaySurfaceMenu.java:284)
-	at gama.ui.shared.utils.WorkbenchHelper$2.runInUIThread(WorkbenchHelper.java:433)
-	at org.eclipse.ui.progress.UIJob.lambda$0(UIJob.java:148)
-	at org.eclipse.swt.widgets.RunnableLock.run(RunnableLock.java:40)
-	at org.eclipse.swt.widgets.Synchronizer.runAsyncMessages(Synchronizer.java:132)
-	at org.eclipse.swt.widgets.Display.runAsyncMessages(Display.java:4094)
-	at org.eclipse.swt.widgets.Display.readAndDispatch(Display.java:3710)
-	at org.eclipse.e4.ui.internal.workbench.swt.PartRenderingEngine$5.run(PartRenderingEngine.java:1151)
-	at org.eclipse.core.databinding.observable.Realm.runWithDefault(Realm.java:339)
-	at org.eclipse.e4.ui.internal.workbench.swt.PartRenderingEngine.run(PartRenderingEngine.java:1042)
-	at org.eclipse.e4.ui.internal.workbench.E4Workbench.createAndRunUI(E4Workbench.java:153)
-	at org.eclipse.ui.internal.Workbench.lambda$3(Workbench.java:668)
-	at org.eclipse.core.databinding.observable.Realm.runWithDefault(Realm.java:339)
-	at org.eclipse.ui.internal.Workbench.createAndRunWorkbench(Workbench.java:576)
-	at gama.ui.application.Application.start(Application.java:149)
-	at org.eclipse.equinox.internal.app.EclipseAppHandle.run(EclipseAppHandle.java:208)
-	at org.eclipse.core.runtime.internal.adaptor.EclipseAppLauncher.runApplication(EclipseAppLauncher.java:149)
-	at org.eclipse.core.runtime.internal.adaptor.EclipseAppLauncher.start(EclipseAppLauncher.java:115)
-	at org.eclipse.core.runtime.adaptor.EclipseStarter.run(EclipseStarter.java:467)
-	at org.eclipse.core.runtime.adaptor.EclipseStarter.run(EclipseStarter.java:298)
-	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
-	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
-	at org.eclipse.equinox.launcher.Main.invokeFramework(Main.java:670)
-	at org.eclipse.equinox.launcher.Main.basicRun(Main.java:607)
-	at org.eclipse.equinox.launcher.Main.run(Main.java:1492)
-	at org.eclipse.equinox.launcher.Main.main(Main.java:1465)
