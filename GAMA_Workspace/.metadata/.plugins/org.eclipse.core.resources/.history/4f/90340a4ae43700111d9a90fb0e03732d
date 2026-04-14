@@ -1,0 +1,104 @@
+model FluxGipuzkoaTraffic
+
+global {
+    file shape_file_zones <- file("../includes/gipuzkoa_distritos.shp");
+    file shape_roads <- file("../includes/road_gipuzkoa/road_gipuzkoa.shp"); 
+    file csv_file_data <- csv_file("../includes/flux_gipuzkoa_final.csv", ",");
+
+    geometry shape <- envelope(shape_file_zones);
+    graph road_network;
+
+    init {
+        // --- CONFIGURATION TEMPORELLE ---
+        starting_date <- date("2025-02-14 08:00:00");
+        step <- 5 #s; 
+        
+        write "1. Création des zones Gipuzkoa...";
+        create zone from: shape_file_zones with: [id::string(read("ID"))]; 
+        map<string, zone> map_zones <- zone as_map (each.id::each);
+
+        write "2. Chargement du réseau routier...";
+        create road from: shape_roads;
+        road_network <- as_edge_graph(road);
+
+        write "3. Chargement des données CSV...";
+        matrix data <- matrix(csv_file_data);
+        loop i from: 1 to: data.rows - 1 {
+            if (int(data[1, i]) = 8) {
+                string id_depart <- string(data[2, i]);       
+                string id_arrivee <- string(data[3, i]);      
+                int nombre_personnes <- int(float(data[13, i])); 
+
+                if (id_depart in map_zones.keys and id_arrivee in map_zones.keys) {
+                    if (nombre_personnes > 0) {
+                        create trip_scheduler {
+                            trips <- nombre_personnes;
+                            depart_at <- starting_date + rnd(3600); 
+                            o_zone <- map_zones[id_depart];
+                            d_zone <- map_zones[id_arrivee];
+                        }
+                    }
+                }
+            }
+        }
+        write "✅ Simulation prête ! Démarrage du trafic...";
+        write "===================================================";
+    }
+
+    // --- NOUVEAU : SUIVI DANS LA CONSOLE ---
+    // Ce reflex se déclenche à chaque fois que les secondes de l'horloge sont à 0 (donc toutes les minutes)
+    reflex log_to_console when: current_date.second = 0 {
+        string clock_h <- string(current_date.hour);
+        string clock_m <- (current_date.minute < 10 ? "0" : "") + string(current_date.minute);
+        int real_time <- int(total_duration);
+        
+        write "⏱️ Simu : " + clock_h + "h" + clock_m + "  |  ⏳ Temps réel : " + real_time + "s  |  🚗 Véhicules actifs : " + length(commuter);
+    }
+}
+
+species trip_scheduler {
+    int trips;
+    date depart_at;
+    zone o_zone;
+    zone d_zone;
+
+    reflex dispatch_agents when: current_date >= depart_at {
+        create commuter number: max(1, trips / 10) {
+            location <- any_location_in(myself.o_zone);
+            target <- any_location_in(myself.d_zone);
+        }
+        do die;
+    }
+}
+
+species zone {
+    string id;
+    aspect base { draw shape color: rgb(235, 235, 235) border: #silver; }
+}
+
+species road {
+    aspect default { draw shape color: rgb(100, 100, 100) width: 1.0; }
+}
+
+species commuter skills: [moving] {
+    point target;
+    reflex move {
+        do goto target: target speed: 80 #km/#h on: road_network;
+        if (location distance_to target < 50 #m) { do die; }
+    }
+    aspect default {
+        draw circle(300) color: rgb(255, 0, 0, 40); 
+        draw triangle(400) color: #red border: #white width: 2 rotate: heading + 90;
+    }
+}
+
+experiment Visualisation type: gui {
+    output {
+        display map type: java2D background: #white {
+            species zone aspect: base;
+            species road aspect: default;
+            species commuter aspect: default;
+            // Le bloc graphics a été supprimé pour éviter les conflits d'affichage
+        }
+    }
+}

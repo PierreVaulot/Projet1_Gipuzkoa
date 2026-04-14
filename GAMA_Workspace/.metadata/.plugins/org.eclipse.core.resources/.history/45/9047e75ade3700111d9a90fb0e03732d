@@ -1,0 +1,129 @@
+model FluxGipuzkoaTraffic
+
+global {
+	// --- 1. DATA SOURCES ---
+	file shape_file_zones <- file("../includes/gipuzkoa_distritos.shp");
+	file shape_roads <- file("../includes/road_gipuzkoa/road_gipuzkoa.shp"); 
+	file csv_file_data <- csv_file("../includes/flux_gipuzkoa_final.csv", ",");
+
+	// La carte englobe toute la région
+	geometry shape <- envelope(shape_file_zones);
+
+	// --- 2. TEMPORAL CONFIGURATION ---
+	date sim_start <- date("2025-02-14 08:00:00");
+	float step <- 5 #s; 
+	
+	graph road_network;
+
+	init {
+		write "1. Création des zones Gipuzkoa...";
+		create zone from: shape_file_zones with: [id::string(read("ID"))]; 
+		
+		// TON OPTIMISATION CONSERVÉE : Indispensable pour une région entière !
+		map<string, zone> map_zones <- zone as_map (each.id::each);
+
+		write "2. Chargement du réseau routier...";
+		create road from: shape_roads;
+		road_network <- as_edge_graph(road);
+
+		write "3. Chargement des données CSV...";
+		matrix data <- matrix(csv_file_data);
+		
+		int total_lignes <- data.rows - 1;
+		write "Total des trajets à analyser : " + total_lignes;
+
+		// On boucle à partir de 1 (en supposant que la ligne 0 est l'en-tête, comme dans ton code)
+		loop i from: 1 to: total_lignes {
+			
+			// HYPOTHÈSE : On suppose que la colonne 1 contient l'heure (comme pour le fichier San Seb)
+			// Si ton fichier est DÉJÀ filtré sur 08h, tu peux enlever ce 'if'
+			if (int(data[1, i]) = 8) {
+				
+				string id_depart <- string(data[2, i]);       // Col 2: origen
+				string id_arrivee <- string(data[3, i]);      // Col 3: destino
+				int nombre_personnes <- int(float(data[13, i])); // Col 13: viajes (converti en entier)
+
+				if (id_depart in map_zones.keys and id_arrivee in map_zones.keys) {
+					if (nombre_personnes > 0) {
+						
+						create trip_scheduler {
+							trips <- nombre_personnes;
+							// Les départs sont étalés aléatoirement sur 1 heure (3600 sec)
+							int delay_seconds <- rnd(3600);
+							depart_at <- sim_start + delay_seconds; 
+							
+							// On utilise ton dictionnaire pour attribuer les zones instantanément
+							o_zone <- map_zones[id_depart];
+							d_zone <- map_zones[id_arrivee];
+						}
+					}
+				}
+			}
+		}
+		
+		write "✅ Simulation régionale prête ! " + length(trip_scheduler) + " flux programmés sur le réseau.";
+	}
+}
+
+// --- SPECIES ---
+
+species trip_scheduler {
+	int trips;
+	date depart_at;
+	zone o_zone;
+	zone d_zone;
+
+	reflex dispatch_agents when: current_date >= depart_at {
+		// RATIO DE SPAWN : 1 voiture pour 10 personnes. 
+		// Si ton PC rame (Gipuzkoa c'est grand!), passe ce chiffre à 20 ou 50.
+		create commuter number: max(1, trips / 10) {
+			location <- any_location_in(myself.o_zone);
+			target <- any_location_in(myself.d_zone);
+		}
+		do die;
+	}
+}
+
+species zone {
+	string id;
+	aspect base {
+		draw shape color: #gainsboro border: #gray;
+	}
+}
+
+species road {
+	aspect default {
+		draw shape color: rgb(80, 80, 80) width: 1.0;
+	}
+}
+
+species commuter skills: [moving] {
+	point target;
+	reflex move {
+		// Vitesse plus élevée (80 km/h) car on est sur un réseau régional avec autoroutes
+		do goto target: target speed: 80 #km/#h on: road_network;
+		if (location distance_to target < 20 #m) { do die; }
+	}
+	aspect default {
+		draw triangle(80) color: #red border: #white rotate: heading + 90;
+	}
+}
+
+// --- GUI / EXPERIMENT ---
+
+experiment Visualisation type: gui {
+	output {
+		display map type: java2D background: #white {
+			species zone aspect: base;
+			species road aspect: default;
+			species commuter aspect: default;
+			
+			graphics "Overlay" {
+				string clock_h <- string(current_date.hour);
+				string clock_m <- (current_date.minute < 10 ? "0" : "") + string(current_date.minute);
+				draw "Heure : " + clock_h + "h" + clock_m at: {50, 50} color: #black font: font("Arial", 24, #bold);
+				draw "Véhicules actifs : " + length(commuter) at: {50, 100} color: #darkred font: font("Arial", 18);
+			}
+		}
+	}
+}

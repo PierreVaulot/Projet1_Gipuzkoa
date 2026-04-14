@@ -1,0 +1,120 @@
+model DonostiaTrafficSimulation
+
+global {
+	// --- 1. DATA SOURCES ---
+	file shape_donostia <- file("../includes/donostia_distritos.shp");
+	file shape_roads <- file("../includes/road_gipuzkoa/road_gipuzkoa.shp"); 
+	file csv_points <- csv_file("../includes/points_prets.csv", true);
+	file csv_flows <- csv_file("../includes/Flux_08h_SanSebastian.csv", true);
+	
+	geometry shape <- envelope(shape_donostia);
+
+	// --- 2. TEMPORAL CONFIGURATION ---
+	date sim_start <- date("2025-02-14 08:00:00");
+	float step <- 5 #s; 
+	
+	graph road_network;
+
+	init {
+		create district from: shape_donostia with: [zone_id::string(read("ID"))];
+		create road from: shape_roads;
+		road_network <- as_edge_graph(road);
+		
+		matrix data_pts <- matrix(csv_points);
+		loop i from: 0 to: data_pts.rows - 1 {
+			create establishment {
+				location <- {float(data_pts[0, i]), float(data_pts[1, i])};
+			}
+		}
+		
+		do initialize_traffic;
+	}
+
+	action initialize_traffic {
+		matrix flow_data <- matrix(csv_flows);
+		loop i from: 0 to: flow_data.rows - 1 {
+			if (int(flow_data[1, i]) = 8) {
+				string origin_id <- string(flow_data[2, i]);      
+				string dest_id   <- string(flow_data[3, i]);        
+				int trip_count   <- int(float(flow_data[4, i]));    
+				
+				district origin_zone <- district first_with (each.zone_id = origin_id);
+				district dest_zone   <- district first_with (each.zone_id = dest_id);
+				
+				if (origin_zone != nil and dest_zone != nil and trip_count > 0) {
+					create trip_scheduler {
+						trips <- trip_count;
+						int delay_seconds <- rnd(3600);
+						depart_at <- sim_start + delay_seconds; 
+						o_zone <- origin_zone;
+						d_zone <- dest_zone;
+					}
+				}
+			}
+		}
+	}
+}
+
+species trip_scheduler {
+	int trips;
+	date depart_at;
+	district o_zone;
+	district d_zone;
+
+	reflex dispatch_agents when: current_date >= depart_at {
+		create commuter number: max(1, trips / 10) {
+			location <- any_location_in(myself.o_zone);
+			target <- any_location_in(myself.d_zone);
+		}
+		do die;
+	}
+}
+
+species district {
+	string zone_id;
+	aspect default {
+		draw shape color: rgb(245, 245, 245) border: #silver;
+	}
+}
+
+species road {
+	aspect default {
+		draw shape color: rgb(60, 60, 60) width: 1.2;
+	}
+}
+
+species establishment {
+	aspect default {
+		draw circle(100) color: rgb(220, 20, 60, 35); 
+	}
+}
+
+species commuter skills: [moving] {
+	point target;
+	reflex move {
+		do goto target: target speed: 30 #km/#h on: road_network;
+		if (location distance_to target < 15 #m) { do die; }
+	}
+	aspect default {
+		draw triangle(50) color: #cyan border: #white rotate: heading + 90;
+	}
+}
+
+experiment Urban_Traffic type: gui {
+	output {
+		// Correction: Suppression de la facette 'silent' qui causait l'erreur
+		display Main_Map background: #white {
+			species district aspect: default;
+			species establishment aspect: default;
+			species road aspect: default;
+			species commuter aspect: default;
+			
+			graphics "Overlay" {
+				string clock_h <- string(current_date.hour);
+				string clock_m <- (current_date.minute < 10 ? "0" : "") + string(current_date.minute);
+				draw "Time: " + clock_h + "h" + clock_m at: {60, 60} color: #black font: font("Arial", 20, #bold);
+				draw "Active Commuters: " + length(commuter) at: {60, 110} color: #darkcyan font: font("Arial", 16);
+			}
+		}
+	}
+}

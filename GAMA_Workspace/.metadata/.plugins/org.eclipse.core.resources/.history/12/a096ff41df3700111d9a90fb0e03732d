@@ -1,0 +1,142 @@
+model FluxGipuzkoaTraffic
+
+global {
+    // --- 1. DATA SOURCES ---
+    file shape_file_zones <- file("../includes/gipuzkoa_distritos.shp");
+    file shape_roads <- file("../includes/road_gipuzkoa/road_gipuzkoa.shp"); 
+    file csv_file_data <- csv_file("../includes/flux_gipuzkoa_final.csv", ",");
+
+    // Limites de la carte basées sur la région entière
+    geometry shape <- envelope(shape_file_zones);
+    graph road_network;
+
+    init {
+        // --- 2. TEMPORAL CONFIGURATION ---
+        // On modifie l'horloge interne directement dans l'init
+        starting_date <- date("2025-02-14 08:00:00");
+        step <- 5 #s; 
+        
+        write "1. Création des zones Gipuzkoa...";
+        create zone from: shape_file_zones with: [id::string(read("ID"))]; 
+        
+        // Création du dictionnaire pour associer ultra-rapidement les flux aux zones
+        map<string, zone> map_zones <- zone as_map (each.id::each);
+
+        write "2. Chargement du réseau routier...";
+        create road from: shape_roads;
+        road_network <- as_edge_graph(road);
+
+        write "3. Chargement des données CSV...";
+        matrix data <- matrix(csv_file_data);
+        
+        int total_lignes <- data.rows - 1;
+        write "Total des trajets à analyser : " + total_lignes;
+
+        // --- 4. TRAFFIC LOADING ---
+        loop i from: 1 to: total_lignes {
+            
+            // On filtre pour ne prendre que les trajets de 08:00
+            if (int(data[1, i]) = 8) {
+                
+                string id_depart <- string(data[2, i]);       
+                string id_arrivee <- string(data[3, i]);      
+                int nombre_personnes <- int(float(data[13, i])); 
+
+                // Sécurité : on vérifie que les deux zones existent bien sur la carte
+                if (id_depart in map_zones.keys and id_arrivee in map_zones.keys) {
+                    if (nombre_personnes > 0) {
+                        
+                        create trip_scheduler {
+                            trips <- nombre_personnes;
+                            
+                            // Décalage aléatoire sur 1 heure (3600 secondes)
+                            int delay_seconds <- rnd(3600);
+                            depart_at <- starting_date + delay_seconds; 
+                            
+                            o_zone <- map_zones[id_depart];
+                            d_zone <- map_zones[id_arrivee];
+                        }
+                    }
+                }
+            }
+        }
+        
+        write "✅ Simulation régionale prête ! " + length(trip_scheduler) + " flux programmés sur le réseau.";
+    }
+}
+
+// --- SPECIES ---
+
+// Le "programmateur" invisible qui libère les voitures à la bonne heure
+species trip_scheduler {
+    int trips;
+    date depart_at;
+    zone o_zone;
+    zone d_zone;
+
+    reflex dispatch_agents when: current_date >= depart_at {
+        // Ratio : 1 agent GAMA représente 10 personnes réelles
+        create commuter number: max(1, trips / 10) {
+            location <- any_location_in(myself.o_zone);
+            target <- any_location_in(myself.d_zone);
+        }
+        do die; // Détruit le scheduler une fois son travail terminé
+    }
+}
+
+// Les districts
+species zone {
+    string id;
+    aspect base {
+        draw shape color: #gainsboro border: #gray;
+    }
+}
+
+// Les routes
+species road {
+    aspect default {
+        draw shape color: rgb(80, 80, 80) width: 1.0;
+    }
+}
+
+// Les véhicules
+species commuter skills: [moving] {
+    point target;
+    
+    reflex move {
+        // Vitesse régionale (80 km/h) sur le réseau
+        do goto target: target speed: 80 #km/#h on: road_network;
+        
+        // Le véhicule disparaît s'il est arrivé
+        if (location distance_to target < 20 #m) { 
+            do die; 
+        }
+    }
+    
+    aspect default {
+        // Taille à 150 pour que ça reste visible quand on dézoome sur toute la province
+        draw triangle(150) color: #red border: #white rotate: heading + 90;
+    }
+}
+
+// --- GUI / EXPERIMENT ---
+
+experiment Visualisation type: gui {
+    output {
+        display map type: java2D background: #white {
+            // Ordre d'affichage : zones en bas, routes au milieu, voitures par-dessus
+            species zone aspect: base;
+            species road aspect: default;
+            species commuter aspect: default;
+            
+            // L'horloge et le compteur
+            graphics "Overlay" {
+                string clock_h <- string(current_date.hour);
+                string clock_m <- (current_date.minute < 10 ? "0" : "") + string(current_date.minute);
+                
+                draw "Heure : " + clock_h + "h" + clock_m at: {50, 50} color: #black font: font("Arial", 24, #bold);
+                draw "Véhicules actifs : " + length(commuter) at: {50, 100} color: #darkred font: font("Arial", 18);
+            }
+        }
+    }
+}
