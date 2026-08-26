@@ -4,7 +4,7 @@ This repository contains a Data Engineering and Spatial Analysis pipeline design
 
 The project focuses on the Gipuzkoa province (Basque Country), specifically analyzing rush-hour commuting and dynamic population flows.
 
-## 🗺️ Data Acquisition and Preprocessing
+##  Data Acquisition and Preprocessing
 
 The simulation relies on several spatial and statistical data sources that required a rigorous processing pipeline. This workflow guarantees the fluidity, accuracy, and exactness of the regional traffic model.
 
@@ -60,7 +60,7 @@ To run the agent-based simulation with full visual rendering on your local machi
 
 1. Open the **GAMA Platform** desktop application (version 2025.06 recommended).
 2. Ensure your GAMA workspace is configured properly. Place all of the preprocessed datasets (OSM clean roads, POI CSV, MITMA flows, and District shapefiles) exactly in this directory path: 
-   👉 `GAMA_Workspace/Projet_Gipuzkoa/includes/`
+    `GAMA_Workspace/Projet_Gipuzkoa/includes/`
 3. Navigate to the `GAMA_Workspace/Projet_Gipuzkoa/models/` directory and open `visualisation_flux.gaml`.
 4. Click the **Run** button (green play icon in the top toolbar) to instantiate the `RegionalTrafficAnalysis` experiment.
 5. In the simulation parameters panel under *Traffic Settings*, adjust the **Flow Display Percentage (%)** slider (recommended values: `0.5%` to `5.0%` to optimize rendering performance on local hardware).
