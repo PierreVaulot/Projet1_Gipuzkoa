@@ -10,7 +10,7 @@ SHP_FILE = "includes/gipuzkoa_distritos.shp"
 
 # feb 14 2025 midnight unix timestamp
 BASE_TS = 1739491200 
-OUTPUT_FILE = "population_dynamique_reelle.csv"
+OUTPUT_FILE = "population_gipuzkoa_each1min.csv"
 
 def load_base_population(csv_path):
     print(f"loading base population from {csv_path}...")
@@ -58,8 +58,8 @@ def generate_population_timeline():
     df_events = pd.DataFrame(events).sort_values('time')
     
     # 4. calculate real-time population at 10-minute intervals
-    print("calculating real-time population balances (10-min intervals)...")
-    timestamps = range(BASE_TS, BASE_TS + 86400, 600) 
+    print("calculating real-time population balances (1 min intervals)...")
+    timestamps = range(BASE_TS, BASE_TS + 86400, 60) 
     timeline_data = []
 
     for dist_id, (lat, lng) in coords.items():

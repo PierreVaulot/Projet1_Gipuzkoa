@@ -1,35 +1,40 @@
 import geopandas as gpd
-import matplotlib.pyplot as plt
 import os
 
-raw_shapefile = "zonificacion_distritos/zonificacion_distritos.shp" 
-out_folder = "includes" 
+# --- PATHS ---
+raw_roads_file = "road_pais_vasco_clean/road_pais_vasco_clean.shp"
+gipuzkoa_mask_file = "includes/gipuzkoa_distritos.shp"
+out_folder = "includes"
 
-# make sure the output dir exists so we don't crash at the very end
 if not os.path.exists(out_folder):
     os.makedirs(out_folder)
 
-print("loading the massive base map... hold on")
-gdf = gpd.read_file(raw_shapefile)
+print("====================================================")
+print("Starting spatial clipping of the road network...")
+print("====================================================")
 
-print(f"total zones loaded: {len(gdf)}")
-print("columns we have to work with:", gdf.columns.tolist())
+print("[1/3] Loading Gipuzkoa boundary mask...")
+gdf_mask = gpd.read_file(gipuzkoa_mask_file)
 
-# gipuzkoa postal codes start with 20. clipping out everything else.
-# casting to string first just in case pandas read them as integers
+print("[2/3] Loading raw Basque Country roads (this may take a minute)...")
+gdf_roads = gpd.read_file(raw_roads_file)
+print(f"  -> Loaded {len(gdf_roads)} raw road segments.")
 
-gdf_gipuzkoa = gdf[gdf['ID'].astype(str).str.startswith('20')]
+print("[3/3] Clipping roads to Gipuzkoa boundaries (Heavy computation)...")
+# Ensure Coordinate Reference Systems (CRS) match before clipping
+if gdf_roads.crs != gdf_mask.crs:
+    print("  -> Aligning CRS...")
+    gdf_roads = gdf_roads.to_crs(gdf_mask.crs)
 
-print(f"gipuzkoa zones only: {len(gdf_gipuzkoa)}")
+# The spatial clip operation
+gdf_clipped = gpd.clip(gdf_roads, gdf_mask)
+print(f"  -> Kept {len(gdf_clipped)} road segments inside Gipuzkoa.")
 
-# quick sanity check to make sure we actually kept the right region
-gdf_gipuzkoa.plot(edgecolor='black', linewidth=0.5, color='lightgreen', figsize=(10, 8))
-plt.title("sanity check: Gipuzkoa map")
-plt.axis('off') 
-plt.show()
+output_path = os.path.join(out_folder, "road_pais_vasco_cropped.shp")
+print(f"Exporting cropped shapefile to {output_path}...")
+gdf_clipped.to_file(output_path)
 
-# dump the clean sliced map for the other scripts
-output_path = os.path.join(out_folder, "gipuzkoa_distritos.shp")
-gdf_gipuzkoa.to_file(output_path)
-
-print(f"done! sliced shapefile saved to: {output_path}")
+print("====================================================")
+print("Process completed successfully.")
+print(f"File ready for GAMA: {output_path}")
+print("====================================================")
